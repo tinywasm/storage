@@ -1,5 +1,5 @@
 ---
-PLAN: "feat: tinywasm/db — puerto de almacenamiento (contrato + conformance + mem + mock)"
+PLAN: "feat: tinywasm/storage — puerto de almacenamiento (contrato + conformance + mem + mock)"
 TAG: v0.0.1
 ---
 
@@ -10,7 +10,7 @@ TAG: v0.0.1
 > Tests SIEMPRE con `gotest` (no `go test`). Publica SIEMPRE con `gopush 'mensaje'` (no
 > `git commit`/`git push`). El tag lo pone `gopush`.
 
-Eres un agente **sin contexto previo** y **solo tienes este repo** (`github.com/tinywasm/db`). Todo el
+Eres un agente **sin contexto previo** y **solo tienes este repo** (`github.com/tinywasm/storage`). Todo el
 contrato y el código exacto van inline — no necesitas leer `tinywasm/orm` para ejecutar este plan.
 
 ---
@@ -23,7 +23,7 @@ backend de almacenamiento (`postgres`, `sqlt`, `indexdb`) debe implementar, y **
 obligaba a todo backend a depender del ORM completo solo para cumplir unas interfaces — arquitectura
 invertida: un driver de base de datos no debería depender de un ORM.
 
-Este repo, `tinywasm/db`, es **el puerto** (en el sentido de arquitectura hexagonal): las interfaces,
+Este repo, `tinywasm/storage`, es **el puerto** (en el sentido de arquitectura hexagonal): las interfaces,
 los tipos de valor, el contrato ejecutable (`conformance`) y una implementación de referencia en
 memoria (`mem`) + dobles de test (`mock`). Es el precedente exacto de `database/sql/driver` en la
 stdlib de Go — `database/sql` (`sql.DB`, ergonomía) es opcional sobre `database/sql/driver` (el
@@ -32,7 +32,7 @@ contrato); nunca al revés. `tinywasm/orm` pasará a ser el equivalente de `sql.
 [`app-releases/docs/DB_PORT_PROPOSAL.md`](https://github.com/tinywasm/app-releases/blob/main/docs/DB_PORT_PROPOSAL.md)
 §6.8 — por qué el ORM no es parte del contrato).
 
-**Alcance de este plan: SOLO `tinywasm/db`.** No toques `tinywasm/orm`, `tinywasm/ddl`, ni ningún
+**Alcance de este plan: SOLO `tinywasm/storage`.** No toques `tinywasm/orm`, `tinywasm/ddl`, ni ningún
 backend (`postgres`/`sqlt`/`indexdb`). Migrarlos a depender de `db` es trabajo de fases posteriores,
 despachadas por separado. Este repo debe quedar **completo y publicable por sí solo**.
 
@@ -42,7 +42,7 @@ despachadas por separado. Este repo debe quedar **completo y publicable por sí 
 tinywasm/model   (Field, Definition, FieldWriter/Reader, ReadValues)                    [fmt]
       │
       ▼
-tinywasm/db      — ESTE REPO. El puerto:
+tinywasm/storage      — ESTE REPO. El puerto:
       │             · raíz: Executor, Compiler, Conn, Scanner, Rows, TxExecutor,
       │               TxBoundExecutor, Query, Action, Order, Condition, Plan,
       │               ErrNoRows, ScanAny
@@ -85,7 +85,7 @@ tinywasm/db      — ESTE REPO. El puerto:
 
 ## 3. Diseño del paquete `db` (raíz)
 
-`module github.com/tinywasm/db`, `go 1.25.2`. Deps: `github.com/tinywasm/model`,
+`module github.com/tinywasm/storage`, `go 1.25.2`. Deps: `github.com/tinywasm/model`,
 `github.com/tinywasm/fmt`.
 
 ### 3.1 `executor.go`
@@ -451,7 +451,7 @@ var _ model.Model = (*Widget)(nil)
 package conformance
 
 import "github.com/tinywasm/model"
-import "github.com/tinywasm/db"
+import "github.com/tinywasm/storage"
 import "testing"
 
 // Factory builds, for ONE clause, a fresh db.Conn whose Widget table already exists and is
@@ -821,7 +821,7 @@ vez de envolverlo en `*orm.DB` (el envoltorio ergonómico ya no es responsabilid
 package mem
 
 import (
-	"github.com/tinywasm/db"
+	"github.com/tinywasm/storage"
 	"github.com/tinywasm/fmt"
 	"github.com/tinywasm/model"
 )
@@ -1312,7 +1312,7 @@ Es exactamente lo que hoy vive en `orm/mock/recorders.go` — mismo código, `or
 package mock
 
 import (
-	"github.com/tinywasm/db"
+	"github.com/tinywasm/storage"
 	"github.com/tinywasm/model"
 )
 
@@ -1502,7 +1502,7 @@ Cubre los constructores/getters de los tipos de valor — nadie más los prueba,
 - `Conn`: un assert de compilación (`var _ Conn = (*struct{ Executor; Compiler })(nil)` no compila
   directo por ser anónimo — más simple: verifica en un test que un tipo que implementa ambas
   interfaces satisface `Conn` instanciándolo contra `mem.New()` desde un test en `db_test.go` que
-  importe `github.com/tinywasm/db/mem` — ojo, esto crea una dependencia de test raíz→submódulo, que es
+  importe `github.com/tinywasm/storage/mem` — ojo, esto crea una dependencia de test raíz→submódulo, que es
   aceptable en Go (los tests no cuentan para el grafo de dependencia del paquete productivo) pero si
   prefieres evitarlo, basta con el `var _ db.Conn = (*engine)(nil)` que ya vive dentro de `mem`).
 
@@ -1517,8 +1517,8 @@ package mem
 import (
 	"testing"
 
-	"github.com/tinywasm/db"
-	"github.com/tinywasm/db/conformance"
+	"github.com/tinywasm/storage"
+	"github.com/tinywasm/storage/conformance"
 	"github.com/tinywasm/model"
 )
 
@@ -1559,17 +1559,17 @@ Añade tests directos hasta 100%, mismo patrón que ya existe en el ecosistema
 
 ## 8. Criterios de aceptación
 
-- `github.com/tinywasm/db` existe, `go 1.25.2`, deps **solo** `model`+`fmt`.
+- `github.com/tinywasm/storage` existe, `go 1.25.2`, deps **solo** `model`+`fmt`.
 - Raíz: `Executor`/`Compiler`/`Conn`/`Scanner`/`Rows`/`TxExecutor`/`TxBoundExecutor`, `Query`/`Action`/
   `Order`(+`Asc`/`Desc`)/`Condition`(+`Eq/Neq/Gt/Gte/Lt/Lte/Like/In/Or/IsNotNull`)/`Plan`, `ErrNoRows`,
   `ScanAny`. **Cero DDL.** Compila bajo `//go:build wasm` y bajo TinyGo (`gotest -tinygo`).
   **Cero `map[K]V`** en todo el repo.
   **Cero query builder / `DB` ergonómico** — solo el contrato + tipos de valor.
-- `github.com/tinywasm/db/conformance`: `Run(t, Factory)`, `Factory{Name, New}` (`New` devuelve
+- `github.com/tinywasm/storage/conformance`: `Run(t, Factory)`, `Factory{Name, New}` (`New` devuelve
   `db.Conn`), modelo `Widget` exportado, 12 cláusulas DML construidas sobre `db.Query{}` crudo (sin
   builder). Importa solo `testing`+`db`+`model`.
-- `github.com/tinywasm/db/mem`: `New() db.Conn` funcional, sin driver, sin `map`.
-- `github.com/tinywasm/db/mock`: 7 recorders exportados sin *stutter* (`var _ db.X` asserts).
+- `github.com/tinywasm/storage/mem`: `New() db.Conn` funcional, sin driver, sin `map`.
+- `github.com/tinywasm/storage/mock`: 7 recorders exportados sin *stutter* (`var _ db.X` asserts).
 - `db/mem` corre `conformance.Run` verde y deja **100% de cobertura** en `db/mem` y en `db/mock` por
   separado.
 - `db_test.go` (raíz) cubre `Condition`/`Order`/`ScanAny` al 100%.
