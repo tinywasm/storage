@@ -125,6 +125,12 @@ func TestMemExtra(t *testing.T) {
 			{"%bcd%", []string{"2"}},
 			{"ab%de%", []string{"2"}},
 			{"a%b", []string{"3"}},
+			{"ab%de%xy", nil}, // suffix mismatch
+			{"xy%de%gh", nil}, // prefix mismatch
+			{"ab%xy%ef", nil}, // findHelper mismatch
+			{"abcdef%", []string{"2"}}, // matches ID 2, triggers len(s) < len(prefix) on ID 1
+			{"%abcdefg", nil}, // hasSuffixHelper len check (len(s) < len(suffix))
+			{"ab%%cd", nil},   // findHelper with empty sub
 		}
 
 		for _, tc := range cases {
@@ -169,26 +175,159 @@ func TestMemExtra(t *testing.T) {
 			conn.Exec(plan.Query, plan.Args...)
 		}
 
-		// Comparison queries to cover comparison float/int edge cases
+		// Gt with float64
 		q := storage.Query{
 			Action:     storage.ActionReadAll,
 			Table:      "extra_dummy",
-			Conditions: []storage.Condition{storage.Gt("qty", 15)},
+			Conditions: []storage.Condition{storage.Gt("qty", float64(15.5))},
 		}
 		plan, _ := conn.Compile(q, &ExtraDummy{})
 		rows, err := conn.Query(plan.Query, plan.Args...)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer rows.Close()
 		var got []ExtraDummy
 		for rows.Next() {
 			var d ExtraDummy
 			rows.Scan(d.Pointers()...)
 			got = append(got, d)
 		}
+		rows.Close()
 		if len(got) != 1 || got[0].Id != "2" {
 			t.Errorf("expected only Id 2, got %+v", got)
+		}
+
+		// Gt with float32
+		q2 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Gt("qty", float32(15.5))},
+		}
+		plan2, _ := conn.Compile(q2, &ExtraDummy{})
+		rows2, _ := conn.Query(plan2.Query, plan2.Args...)
+		got = nil
+		for rows2.Next() {
+			var d ExtraDummy
+			rows2.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows2.Close()
+		if len(got) != 1 || got[0].Id != "2" {
+			t.Errorf("expected only Id 2, got %+v", got)
+		}
+
+		// Gt with int32
+		q3 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Gt("qty", int32(15))},
+		}
+		plan3, _ := conn.Compile(q3, &ExtraDummy{})
+		rows3, _ := conn.Query(plan3.Query, plan3.Args...)
+		got = nil
+		for rows3.Next() {
+			var d ExtraDummy
+			rows3.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows3.Close()
+		if len(got) != 1 || got[0].Id != "2" {
+			t.Errorf("expected only Id 2, got %+v", got)
+		}
+
+		// Eq with []byte (testing toStr []byte branch)
+		q4 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Eq("name", []byte("val1"))},
+		}
+		plan4, _ := conn.Compile(q4, &ExtraDummy{})
+		rows4, _ := conn.Query(plan4.Query, plan4.Args...)
+		got = nil
+		for rows4.Next() {
+			var d ExtraDummy
+			rows4.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows4.Close()
+		if len(got) != 1 || got[0].Id != "1" {
+			t.Errorf("expected only Id 1, got %+v", got)
+		}
+
+		// Gt with strings (testing compareAny with string)
+		q5 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Gt("name", "val1")},
+		}
+		plan5, _ := conn.Compile(q5, &ExtraDummy{})
+		rows5, _ := conn.Query(plan5.Query, plan5.Args...)
+		got = nil
+		for rows5.Next() {
+			var d ExtraDummy
+			rows5.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows5.Close()
+		if len(got) != 1 || got[0].Id != "2" {
+			t.Errorf("expected only Id 2, got %+v", got)
+		}
+
+		// equalAny fallback check comparing qty (int64 -> float) against a boolean (non-float)
+		q6 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Eq("qty", true)},
+		}
+		plan6, _ := conn.Compile(q6, &ExtraDummy{})
+		rows6, _ := conn.Query(plan6.Query, plan6.Args...)
+		got = nil
+		for rows6.Next() {
+			var d ExtraDummy
+			rows6.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows6.Close()
+		if len(got) != 0 {
+			t.Errorf("expected 0 matches, got %+v", got)
+		}
+
+		// Gt with non-float fallback toStr default (comparing string "name" against "int" qty value 15)
+		q7 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Gt("name", int(15))},
+		}
+		plan7, _ := conn.Compile(q7, &ExtraDummy{})
+		rows7, _ := conn.Query(plan7.Query, plan7.Args...)
+		got = nil
+		for rows7.Next() {
+			var d ExtraDummy
+			rows7.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows7.Close()
+		if len(got) != 2 {
+			t.Errorf("expected both matches (since 'val1' > '15'), got %+v", got)
+		}
+
+		// Gt with equal float (comparing 'qty' against exactly 10, hits default: return 0 in float comparison inside compareAny)
+		q8 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Gt("qty", 10)},
+		}
+		plan8, _ := conn.Compile(q8, &ExtraDummy{})
+		rows8, _ := conn.Query(plan8.Query, plan8.Args...)
+		got = nil
+		for rows8.Next() {
+			var d ExtraDummy
+			rows8.Scan(d.Pointers()...)
+			got = append(got, d)
+		}
+		rows8.Close()
+		if len(got) != 1 || got[0].Id != "2" {
+			t.Errorf("expected only ID 2 matching, got %+v", got)
 		}
 	})
 
