@@ -89,11 +89,24 @@ only representable state. If you're writing a constructor or a `Factory` field, 
 | `conformance/` | Executable DML contract (`Run(t, Factory)`), built on raw `Query` values — no builder |
 | `mem/` | `mem.New() storage.Conn` — functional in-memory reference backend, no map, no driver |
 | `mock/` | Recorders (`mock.Executor`, `mock.Compiler`, …) — capture calls, don't execute anything |
+| `tests/` | Centralized testing directory containing all test suites for domain types |
 | `docs/` | `PLAN.md` (self-contained implementation plan, delete after `gopush`), architecture notes |
 
-## Testing
+## Testing & Directory Organization
 
-Install once:
+**All `*_test.go` files must be centralized in the `tests/` directory under root.**
+Tests should not be scattered across individual domain folders (`mem/`, `mock/`, etc.). This layout helps preserve shared setup logic, prevents package clutter, and increases code maintainability.
+
+The file prefix must correspond to the domain package it exercises, followed by the specific test cases.
+Examples:
+- `tests/storage_helpers_test.go` (tests for root package constructs like `Condition`, `Order`, `ScanAny`)
+- `tests/mem_conformance_test.go` (tests conformance suite over `mem` engine)
+- `tests/mem_extra_test.go` (tests additional/extra behaviors of the reference `mem` engine)
+- `tests/mock_extra_test.go` (tests additional/extra behaviors of the mock package)
+
+All test files inside `tests/` use `package tests`. This enforces that they only consume the public APIs exported by each package, mirroring real-world end-user behaviors and preserving modular design.
+
+Install test runner once:
 
 ```bash
 go install github.com/tinywasm/devflow/cmd/gotest@latest

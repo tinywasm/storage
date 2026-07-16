@@ -1,4 +1,4 @@
-package mock
+package tests
 
 import (
 	"errors"
@@ -6,11 +6,12 @@ import (
 
 	"github.com/tinywasm/model"
 	"github.com/tinywasm/storage"
+	"github.com/tinywasm/storage/mock"
 )
 
 func TestMockExecutorAndCompiler(t *testing.T) {
 	t.Run("Executor basics default", func(t *testing.T) {
-		exec := &Executor{}
+		exec := &mock.Executor{}
 		err := exec.Exec("INSERT INTO foo", 1, 2)
 		if err != nil {
 			t.Fatal(err)
@@ -47,12 +48,12 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 	})
 
 	t.Run("Executor errors injection", func(t *testing.T) {
-		exec := &Executor{
+		exec := &mock.Executor{
 			ReturnExecErr:   errors.New("exec error"),
 			ReturnQueryErr:  errors.New("query error"),
 			ReturnCloseErr:  errors.New("close error"),
-			ReturnQueryRow:  &Scanner{ScanErr: errors.New("scan error")},
-			ReturnQueryRows: &Rows{ScanErr: errors.New("rows scan error"), ColumnsVal: []string{"a"}, ColumnsErr: errors.New("cols error"), CloseErr: errors.New("close err"), ErrVal: errors.New("err val")},
+			ReturnQueryRow:  &mock.Scanner{ScanErr: errors.New("scan error")},
+			ReturnQueryRows: &mock.Rows{ScanErr: errors.New("rows scan error"), ColumnsVal: []string{"a"}, ColumnsErr: errors.New("cols error"), CloseErr: errors.New("close err"), ErrVal: errors.New("err val")},
 		}
 
 		if err := exec.Exec("INSERT"); err == nil || err.Error() != "exec error" {
@@ -89,9 +90,9 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 	})
 
 	t.Run("Compiler basics", func(t *testing.T) {
-		comp := &Compiler{}
+		comp := &mock.Compiler{}
 		q := storage.Query{Table: "foo"}
-		m := &Model{}
+		m := &mock.Model{}
 		plan, err := comp.Compile(q, m)
 		if err != nil {
 			t.Fatal(err)
@@ -112,7 +113,7 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 	})
 
 	t.Run("Model basics", func(t *testing.T) {
-		m := Model{
+		m := mock.Model{
 			Table: "my_table",
 			Sch:   []model.Field{{Name: "id", Type: model.Text()}},
 			Vals:  []any{"v1"},
@@ -142,7 +143,7 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 	})
 
 	t.Run("TxExecutor basics", func(t *testing.T) {
-		txExec := &TxExecutor{}
+		txExec := &mock.TxExecutor{}
 		tx, err := txExec.BeginTx()
 		if err != nil {
 			t.Fatal(err)
@@ -166,7 +167,7 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 			t.Errorf("expected begin error, got %v", err)
 		}
 
-		bound := &TxBoundExecutor{
+		bound := &mock.TxBoundExecutor{
 			CommitErr:   errors.New("commit error"),
 			RollbackErr: errors.New("rollback error"),
 		}
@@ -179,7 +180,7 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 	})
 
 	t.Run("Rows count test", func(t *testing.T) {
-		rows := &Rows{Count: 2}
+		rows := &mock.Rows{Count: 2}
 		if !rows.Next() {
 			t.Error("expected first next to be true")
 		}
