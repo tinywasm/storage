@@ -1,4 +1,4 @@
-package db
+package storage
 
 import "github.com/tinywasm/model"
 

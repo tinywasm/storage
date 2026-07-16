@@ -1,4 +1,4 @@
-package db
+package storage
 
 import . "github.com/tinywasm/fmt"
 
@@ -43,7 +43,7 @@ func ScanAny(v any, dest any) error {
 	case *any:
 		*p = v
 	default:
-		return Errf("db: unsupported scan type: %T", dest)
+		return Errf("storage: unsupported scan type: %T", dest)
 	}
 	return nil
 }

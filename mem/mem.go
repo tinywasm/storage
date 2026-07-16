@@ -1,16 +1,16 @@
 package mem
 
 import (
-	"github.com/tinywasm/db"
 	"github.com/tinywasm/fmt"
 	"github.com/tinywasm/model"
+	"github.com/tinywasm/storage"
 )
 
-// New returns a functional in-memory db.Conn. It interprets the structured db.Query
+// New returns a functional in-memory storage.Conn. It interprets the structured storage.Query
 // (Create/ReadOne/ReadAll/Update/Delete + Conditions/OrderBy/Limit/Offset). It is THE double a
 // leaf module uses to test round-trips without importing a real driver, and it proves
-// db/conformance exactly like the real backends do.
-func New() db.Conn {
+// storage/conformance exactly like the real backends do.
+func New() storage.Conn {
 	return &engine{}
 }
 
@@ -57,7 +57,7 @@ type dbTable struct {
 
 type engine struct {
 	tables []dbTable
-	lastQ  db.Query
+	lastQ  storage.Query
 	lastM  model.Model
 }
 
@@ -70,14 +70,14 @@ func (e *engine) tableIndex(name string) int {
 	return -1
 }
 
-func (e *engine) Compile(q db.Query, m model.Model) (db.Plan, error) {
+func (e *engine) Compile(q storage.Query, m model.Model) (storage.Plan, error) {
 	e.lastQ, e.lastM = q, m
-	return db.Plan{Mode: q.Action, Query: "mem", Args: q.Values}, nil
+	return storage.Plan{Mode: q.Action, Query: "mem", Args: q.Values}, nil
 }
 
 func (e *engine) Close() error { return nil }
 
-func (e *engine) BeginTx() (db.TxBoundExecutor, error) {
+func (e *engine) BeginTx() (storage.TxBoundExecutor, error) {
 	return e, nil
 }
 
@@ -87,7 +87,7 @@ func (e *engine) Rollback() error { return nil }
 func (e *engine) Exec(query string, args ...any) error {
 	q := e.lastQ
 	switch q.Action {
-	case db.ActionCreate:
+	case storage.ActionCreate:
 		newRow := make(dbRow, 0, len(q.Columns))
 		for i, col := range q.Columns {
 			if i < len(q.Values) {
@@ -97,12 +97,12 @@ func (e *engine) Exec(query string, args ...any) error {
 		idx := e.tableIndex(q.Table)
 		if idx == -1 {
 			// Auto-vivifies the table on first insert. This is why the mem Factory in
-			// db/conformance needs no DDL — it just returns mem.New().
+			// storage/conformance needs no DDL — it just returns mem.New().
 			e.tables = append(e.tables, dbTable{name: q.Table})
 			idx = len(e.tables) - 1
 		}
 		e.tables[idx].rows = append(e.tables[idx].rows, newRow)
-	case db.ActionUpdate:
+	case storage.ActionUpdate:
 		// Consumers build q.Columns from m.Schema() in order, so q.Columns[i] and
 		// schema[i] always name the same field — no lookup needed.
 		schema := e.lastM.Schema()
@@ -116,7 +116,7 @@ func (e *engine) Exec(query string, args ...any) error {
 				}
 			}
 		}
-	case db.ActionDelete:
+	case storage.ActionDelete:
 		idx := e.tableIndex(q.Table)
 		if idx == -1 {
 			return nil
@@ -132,22 +132,22 @@ func (e *engine) Exec(query string, args ...any) error {
 	return nil
 }
 
-func (e *engine) QueryRow(query string, args ...any) db.Scanner {
+func (e *engine) QueryRow(query string, args ...any) storage.Scanner {
 	q := e.lastQ
 	rows := applyOffsetLimit(applyOrder(e.match(q.Table, q.Conditions), q.OrderBy), q.Offset, 1)
 	if len(rows) == 0 {
-		return &memScanner{err: db.ErrNoRows}
+		return &memScanner{err: storage.ErrNoRows}
 	}
 	return &memScanner{row: rows[0], schema: e.lastM.Schema()}
 }
 
-func (e *engine) Query(query string, args ...any) (db.Rows, error) {
+func (e *engine) Query(query string, args ...any) (storage.Rows, error) {
 	q := e.lastQ
 	rows := applyOffsetLimit(applyOrder(e.match(q.Table, q.Conditions), q.OrderBy), q.Offset, q.Limit)
 	return &memRows{rows: rows, schema: e.lastM.Schema(), idx: -1}, nil
 }
 
-func (e *engine) match(table string, conds []db.Condition) []dbRow {
+func (e *engine) match(table string, conds []storage.Condition) []dbRow {
 	idx := e.tableIndex(table)
 	if idx == -1 {
 		return nil
@@ -162,7 +162,7 @@ func (e *engine) match(table string, conds []db.Condition) []dbRow {
 }
 
 // matchRow evaluates conds left-to-right; the first Logic() is ignored (mirrors real adapters).
-func matchRow(row dbRow, conds []db.Condition) bool {
+func matchRow(row dbRow, conds []storage.Condition) bool {
 	if len(conds) == 0 {
 		return true
 	}
@@ -177,7 +177,7 @@ func matchRow(row dbRow, conds []db.Condition) bool {
 	return res
 }
 
-func evalCond(row dbRow, c db.Condition) bool {
+func evalCond(row dbRow, c storage.Condition) bool {
 	v, ok := row.get(c.Field())
 	switch c.Operator() {
 	case "IS NOT NULL":
@@ -244,7 +244,7 @@ func inSlice(v any, listVal any) bool {
 	return false
 }
 
-func applyOrder(rows []dbRow, orders []db.Order) []dbRow {
+func applyOrder(rows []dbRow, orders []storage.Order) []dbRow {
 	for oi := len(orders) - 1; oi >= 0; oi-- { // stable, last key least significant
 		col, desc := orders[oi].Column(), orders[oi].Dir() == "DESC"
 		for i := 1; i < len(rows); i++ {
@@ -315,7 +315,7 @@ func scanInto(row dbRow, schema []model.Field, dest []any) error {
 			break
 		}
 		if v, ok := row.get(f.Name); ok {
-			if err := db.ScanAny(v, dest[i]); err != nil {
+			if err := storage.ScanAny(v, dest[i]); err != nil {
 				return err
 			}
 		}
@@ -470,11 +470,11 @@ func findHelper(s, sub string) int {
 }
 
 var (
-	_ db.Executor        = (*engine)(nil)
-	_ db.Compiler        = (*engine)(nil)
-	_ db.Conn            = (*engine)(nil)
-	_ db.TxExecutor      = (*engine)(nil)
-	_ db.TxBoundExecutor = (*engine)(nil)
-	_ db.Scanner         = (*memScanner)(nil)
-	_ db.Rows            = (*memRows)(nil)
+	_ storage.Executor        = (*engine)(nil)
+	_ storage.Compiler        = (*engine)(nil)
+	_ storage.Conn            = (*engine)(nil)
+	_ storage.TxExecutor      = (*engine)(nil)
+	_ storage.TxBoundExecutor = (*engine)(nil)
+	_ storage.Scanner         = (*memScanner)(nil)
+	_ storage.Rows            = (*memRows)(nil)
 )

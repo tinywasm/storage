@@ -1,4 +1,4 @@
-package db
+package storage
 
 // Action represents the type of database DML operation. Purely DML — no DDL here (see §2).
 type Action int

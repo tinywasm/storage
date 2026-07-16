@@ -4,11 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tinywasm/db"
 	"github.com/tinywasm/model"
+	"github.com/tinywasm/storage"
 )
 
-// Factory builds, for ONE clause, a fresh db.Conn whose Widget table already exists and is
+// Factory builds, for ONE clause, a fresh storage.Conn whose Widget table already exists and is
 // EMPTY. Schema setup is the backend's job, done OUTSIDE this DML contract (this suite never
 // builds a CreateTable Query):
 //   - mem:              auto-creates the table on first Create — New just returns mem.New().
@@ -18,7 +18,7 @@ import (
 // bleed.
 type Factory struct {
 	Name string
-	New  func(t *testing.T, models ...model.Model) db.Conn
+	New  func(t *testing.T, models ...model.Model) storage.Conn
 }
 
 func Run(t *testing.T, f Factory) {
@@ -39,7 +39,7 @@ func Run(t *testing.T, f Factory) {
 	t.Run("delete_removes_matched_rows_only", func(t *testing.T) { deleteRemovesMatchedOnly(t, f) })
 }
 
-func setup(t *testing.T, f Factory, seed ...*Widget) db.Conn {
+func setup(t *testing.T, f Factory, seed ...*Widget) storage.Conn {
 	t.Helper()
 	conn := f.New(t, &Widget{}) // table already exists & empty — backend set it up, not this suite
 	for _, w := range seed {
@@ -52,14 +52,14 @@ func setup(t *testing.T, f Factory, seed ...*Widget) db.Conn {
 
 // create mirrors what orm.DB.Create builds, minus the autoincrement-PK-skip branch (Widget's PK
 // is a plain Text, never AutoInc — that branch is orm's concern and is tested there, not here).
-func create(conn db.Conn, w *Widget) error {
+func create(conn storage.Conn, w *Widget) error {
 	schema := w.Schema()
 	values := model.ReadValues(schema, w.Pointers())
 	columns := make([]string, len(schema))
 	for i, f := range schema {
 		columns[i] = f.Name
 	}
-	q := db.Query{Action: db.ActionCreate, Table: w.ModelName(), Columns: columns, Values: values}
+	q := storage.Query{Action: storage.ActionCreate, Table: w.ModelName(), Columns: columns, Values: values}
 	plan, err := conn.Compile(q, w)
 	if err != nil {
 		return err
@@ -67,8 +67,8 @@ func create(conn db.Conn, w *Widget) error {
 	return conn.Exec(plan.Query, plan.Args...)
 }
 
-func readOne(conn db.Conn, w *Widget, conds ...db.Condition) error {
-	q := db.Query{Action: db.ActionReadOne, Table: w.ModelName(), Conditions: conds, Limit: 1}
+func readOne(conn storage.Conn, w *Widget, conds ...storage.Condition) error {
+	q := storage.Query{Action: storage.ActionReadOne, Table: w.ModelName(), Conditions: conds, Limit: 1}
 	plan, err := conn.Compile(q, w)
 	if err != nil {
 		return err
@@ -76,9 +76,9 @@ func readOne(conn db.Conn, w *Widget, conds ...db.Condition) error {
 	return conn.QueryRow(plan.Query, plan.Args...).Scan(w.Pointers()...)
 }
 
-func readAll(conn db.Conn, w *Widget, conds []db.Condition, order []db.Order, limit, offset int) ([]*Widget, error) {
-	q := db.Query{
-		Action: db.ActionReadAll, Table: w.ModelName(),
+func readAll(conn storage.Conn, w *Widget, conds []storage.Condition, order []storage.Order, limit, offset int) ([]*Widget, error) {
+	q := storage.Query{
+		Action: storage.ActionReadAll, Table: w.ModelName(),
 		Conditions: conds, OrderBy: order, Limit: limit, Offset: offset,
 	}
 	plan, err := conn.Compile(q, w)
@@ -101,14 +101,14 @@ func readAll(conn db.Conn, w *Widget, conds []db.Condition, order []db.Order, li
 	return out, rows.Err()
 }
 
-func update(conn db.Conn, w *Widget, conds ...db.Condition) error {
+func update(conn storage.Conn, w *Widget, conds ...storage.Condition) error {
 	schema := w.Schema()
 	columns := make([]string, len(schema))
 	for i, f := range schema {
 		columns[i] = f.Name
 	}
-	q := db.Query{
-		Action: db.ActionUpdate, Table: w.ModelName(),
+	q := storage.Query{
+		Action: storage.ActionUpdate, Table: w.ModelName(),
 		Columns: columns, Values: model.ReadValues(schema, w.Pointers()), Conditions: conds,
 	}
 	plan, err := conn.Compile(q, w)
@@ -118,8 +118,8 @@ func update(conn db.Conn, w *Widget, conds ...db.Condition) error {
 	return conn.Exec(plan.Query, plan.Args...)
 }
 
-func deleteRow(conn db.Conn, w *Widget, conds ...db.Condition) error {
-	q := db.Query{Action: db.ActionDelete, Table: w.ModelName(), Conditions: conds}
+func deleteRow(conn storage.Conn, w *Widget, conds ...storage.Condition) error {
+	q := storage.Query{Action: storage.ActionDelete, Table: w.ModelName(), Conditions: conds}
 	plan, err := conn.Compile(q, w)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func deleteRow(conn db.Conn, w *Widget, conds ...db.Condition) error {
 func createThenReadOneByPK(t *testing.T, f Factory) {
 	conn := setup(t, f, &Widget{Id: "w1", Name: "alpha", Qty: 3, Active: true})
 	var got Widget
-	if err := readOne(conn, &got, db.Eq("id", "w1")); err != nil {
+	if err := readOne(conn, &got, storage.Eq("id", "w1")); err != nil {
 		t.Fatalf("readOne: %v", err)
 	}
 	if got.Name != "alpha" || got.Qty != 3 || got.Active != true {
@@ -141,9 +141,9 @@ func createThenReadOneByPK(t *testing.T, f Factory) {
 func readOneNoMatchIsNotFound(t *testing.T, f Factory) {
 	conn := setup(t, f)
 	var got Widget
-	err := readOne(conn, &got, db.Eq("id", "nonexistent"))
-	if !errors.Is(err, db.ErrNoRows) {
-		t.Errorf("expected db.ErrNoRows, got %v", err)
+	err := readOne(conn, &got, storage.Eq("id", "nonexistent"))
+	if !errors.Is(err, storage.ErrNoRows) {
+		t.Errorf("expected storage.ErrNoRows, got %v", err)
 	}
 }
 
@@ -166,7 +166,7 @@ func readAllFiltersByEq(t *testing.T, f Factory) {
 		&Widget{Id: "w1", Name: "alpha", Qty: 3, Active: true},
 		&Widget{Id: "w2", Name: "beta", Qty: 4, Active: false},
 	)
-	got, err := readAll(conn, &Widget{}, []db.Condition{db.Eq("name", "alpha")}, nil, 0, 0)
+	got, err := readAll(conn, &Widget{}, []storage.Condition{storage.Eq("name", "alpha")}, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("readAll: %v", err)
 	}
@@ -181,7 +181,7 @@ func readAllAndsTwoConditions(t *testing.T, f Factory) {
 		&Widget{Id: "b", Name: "x", Qty: 1, Active: false},
 		&Widget{Id: "c", Name: "y", Qty: 1, Active: true},
 	)
-	conds := []db.Condition{db.Eq("name", "x"), db.Eq("active", true)}
+	conds := []storage.Condition{storage.Eq("name", "x"), storage.Eq("active", true)}
 	got, err := readAll(conn, &Widget{}, conds, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("readAll: %v", err)
@@ -197,7 +197,7 @@ func readAllOrsConditions(t *testing.T, f Factory) {
 		&Widget{Id: "b", Name: "y", Qty: 2, Active: false},
 		&Widget{Id: "c", Name: "z", Qty: 3, Active: true},
 	)
-	conds := []db.Condition{db.Eq("name", "x"), db.Or(db.Eq("name", "y"))}
+	conds := []storage.Condition{storage.Eq("name", "x"), storage.Or(storage.Eq("name", "y"))}
 	got, err := readAll(conn, &Widget{}, conds, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("readAll: %v", err)
@@ -216,14 +216,14 @@ func readAllOrdersAscDesc(t *testing.T, f Factory) {
 		&Widget{Id: "w2", Name: "beta", Qty: 2, Active: false},
 		&Widget{Id: "w3", Name: "gamma", Qty: 8, Active: true},
 	)
-	gotAsc, err := readAll(conn, &Widget{}, nil, []db.Order{db.Asc("qty")}, 0, 0)
+	gotAsc, err := readAll(conn, &Widget{}, nil, []storage.Order{storage.Asc("qty")}, 0, 0)
 	if err != nil {
 		t.Fatalf("readAll asc: %v", err)
 	}
 	if len(gotAsc) != 3 || gotAsc[0].Id != "w2" || gotAsc[1].Id != "w1" || gotAsc[2].Id != "w3" {
 		t.Errorf("expected w2, w1, w3; got %+v", gotAsc)
 	}
-	gotDesc, err := readAll(conn, &Widget{}, nil, []db.Order{db.Desc("qty")}, 0, 0)
+	gotDesc, err := readAll(conn, &Widget{}, nil, []storage.Order{storage.Desc("qty")}, 0, 0)
 	if err != nil {
 		t.Fatalf("readAll desc: %v", err)
 	}
@@ -239,7 +239,7 @@ func readAllLimitOffset(t *testing.T, f Factory) {
 		&Widget{Id: "w3", Name: "gamma", Qty: 3, Active: true},
 		&Widget{Id: "w4", Name: "delta", Qty: 4, Active: false},
 	)
-	got, err := readAll(conn, &Widget{}, nil, []db.Order{db.Asc("qty")}, 2, 1)
+	got, err := readAll(conn, &Widget{}, nil, []storage.Order{storage.Asc("qty")}, 2, 1)
 	if err != nil {
 		t.Fatalf("readAll: %v", err)
 	}
@@ -256,17 +256,17 @@ func comparisonOperatorsFilter(t *testing.T, f Factory) {
 	)
 	cases := []struct {
 		name string
-		cond db.Condition
+		cond storage.Condition
 		want []string
 	}{
-		{"Neq", db.Neq("qty", 2), []string{"w1", "w3"}},
-		{"Gt", db.Gt("qty", 1), []string{"w2", "w3"}},
-		{"Gte", db.Gte("qty", 2), []string{"w2", "w3"}},
-		{"Lt", db.Lt("qty", 3), []string{"w1", "w2"}},
-		{"Lte", db.Lte("qty", 2), []string{"w1", "w2"}},
+		{"Neq", storage.Neq("qty", 2), []string{"w1", "w3"}},
+		{"Gt", storage.Gt("qty", 1), []string{"w2", "w3"}},
+		{"Gte", storage.Gte("qty", 2), []string{"w2", "w3"}},
+		{"Lt", storage.Lt("qty", 3), []string{"w1", "w2"}},
+		{"Lte", storage.Lte("qty", 2), []string{"w1", "w2"}},
 	}
 	for _, c := range cases {
-		got, err := readAll(conn, &Widget{}, []db.Condition{c.cond}, nil, 0, 0)
+		got, err := readAll(conn, &Widget{}, []storage.Condition{c.cond}, nil, 0, 0)
 		if err != nil {
 			t.Fatalf("%s: readAll: %v", c.name, err)
 		}
@@ -289,7 +289,7 @@ func inOperatorFilters(t *testing.T, f Factory) {
 		&Widget{Id: "b", Name: "beta", Qty: 2, Active: false},
 		&Widget{Id: "c", Name: "gamma", Qty: 3, Active: true},
 	)
-	got, err := readAll(conn, &Widget{}, []db.Condition{db.In("id", []any{"a", "c"})}, nil, 0, 0)
+	got, err := readAll(conn, &Widget{}, []storage.Condition{storage.In("id", []any{"a", "c"})}, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("readAll: %v", err)
 	}
@@ -304,18 +304,18 @@ func updateChangesMatchedOnly(t *testing.T, f Factory) {
 		&Widget{Id: "w2", Name: "beta", Qty: 2, Active: false},
 	)
 	m := &Widget{Name: "updated", Qty: 99, Active: true}
-	if err := update(conn, m, db.Eq("id", "w1")); err != nil {
+	if err := update(conn, m, storage.Eq("id", "w1")); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	var got1 Widget
-	if err := readOne(conn, &got1, db.Eq("id", "w1")); err != nil {
+	if err := readOne(conn, &got1, storage.Eq("id", "w1")); err != nil {
 		t.Fatalf("readOne w1: %v", err)
 	}
 	if got1.Name != "updated" || got1.Qty != 99 || got1.Active != true {
 		t.Errorf("w1 was not correctly updated: %+v", got1)
 	}
 	var got2 Widget
-	if err := readOne(conn, &got2, db.Eq("id", "w2")); err != nil {
+	if err := readOne(conn, &got2, storage.Eq("id", "w2")); err != nil {
 		t.Fatalf("readOne w2: %v", err)
 	}
 	if got2.Name != "beta" || got2.Qty != 2 || got2.Active != false {
@@ -328,16 +328,16 @@ func deleteRemovesMatchedOnly(t *testing.T, f Factory) {
 		&Widget{Id: "w1", Name: "alpha", Qty: 1, Active: true},
 		&Widget{Id: "w2", Name: "beta", Qty: 2, Active: false},
 	)
-	if err := deleteRow(conn, &Widget{}, db.Eq("id", "w1")); err != nil {
+	if err := deleteRow(conn, &Widget{}, storage.Eq("id", "w1")); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	var got1 Widget
-	err := readOne(conn, &got1, db.Eq("id", "w1"))
-	if !errors.Is(err, db.ErrNoRows) {
+	err := readOne(conn, &got1, storage.Eq("id", "w1"))
+	if !errors.Is(err, storage.ErrNoRows) {
 		t.Errorf("expected w1 to be deleted/not found, got err: %v", err)
 	}
 	var got2 Widget
-	if err := readOne(conn, &got2, db.Eq("id", "w2")); err != nil {
+	if err := readOne(conn, &got2, storage.Eq("id", "w2")); err != nil {
 		t.Errorf("expected w2 to still exist, got: %v", err)
 	}
 }

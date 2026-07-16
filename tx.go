@@ -1,4 +1,4 @@
-package db
+package storage
 
 // TxBoundExecutor represents an executor bound to a transaction.
 type TxBoundExecutor interface {

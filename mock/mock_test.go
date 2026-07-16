@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tinywasm/db"
 	"github.com/tinywasm/model"
+	"github.com/tinywasm/storage"
 )
 
 func TestMockExecutorAndCompiler(t *testing.T) {
@@ -90,7 +90,7 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 
 	t.Run("Compiler basics", func(t *testing.T) {
 		comp := &Compiler{}
-		q := db.Query{Table: "foo"}
+		q := storage.Query{Table: "foo"}
 		m := &Model{}
 		plan, err := comp.Compile(q, m)
 		if err != nil {
@@ -103,7 +103,7 @@ func TestMockExecutorAndCompiler(t *testing.T) {
 			t.Errorf("expected foo table, got %s", comp.LastQuery.Table)
 		}
 
-		comp.ReturnPlan = db.Plan{Query: "CUSTOM_QUERY"}
+		comp.ReturnPlan = storage.Plan{Query: "CUSTOM_QUERY"}
 		comp.ReturnErr = errors.New("compile error")
 		_, err = comp.Compile(q, m)
 		if err == nil || err.Error() != "compile error" {

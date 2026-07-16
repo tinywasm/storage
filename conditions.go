@@ -1,4 +1,4 @@
-package db
+package storage
 
 // Condition represents a filter for a query. Sealed value type constructed via helper functions.
 type Condition struct {

@@ -1,4 +1,4 @@
-package db
+package storage
 
 // Executor represents the database connection abstraction. It must remain compatible with
 // sql.DB, sql.Tx, mocks, and WASM drivers.

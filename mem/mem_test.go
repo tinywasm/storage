@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tinywasm/db"
 	"github.com/tinywasm/model"
+	"github.com/tinywasm/storage"
 )
 
 // DummyModel is a helper model implementing model.Model for testing.
@@ -30,7 +30,7 @@ var _ model.Model = (*DummyModel)(nil)
 func TestMemExtra(t *testing.T) {
 	t.Run("BeginTx, Commit, Rollback, Close", func(t *testing.T) {
 		conn := New()
-		tx, err := conn.(db.TxExecutor).BeginTx()
+		tx, err := conn.(storage.TxExecutor).BeginTx()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -55,13 +55,13 @@ func TestMemExtra(t *testing.T) {
 
 	t.Run("Update/Delete on table not exist", func(t *testing.T) {
 		conn := New()
-		q := db.Query{Action: db.ActionUpdate, Table: "not_exist"}
+		q := storage.Query{Action: storage.ActionUpdate, Table: "not_exist"}
 		plan, _ := conn.Compile(q, &DummyModel{})
 		if err := conn.Exec(plan.Query, plan.Args...); err != nil {
 			t.Fatal(err)
 		}
 
-		qd := db.Query{Action: db.ActionDelete, Table: "not_exist"}
+		qd := storage.Query{Action: storage.ActionDelete, Table: "not_exist"}
 		pland, _ := conn.Compile(qd, &DummyModel{})
 		if err := conn.Exec(pland.Query, pland.Args...); err != nil {
 			t.Fatal(err)
@@ -70,7 +70,7 @@ func TestMemExtra(t *testing.T) {
 
 	t.Run("Query Columns()", func(t *testing.T) {
 		conn := New()
-		q := db.Query{Action: db.ActionReadAll, Table: "dummy"}
+		q := storage.Query{Action: storage.ActionReadAll, Table: "dummy"}
 		plan, _ := conn.Compile(q, &DummyModel{})
 		rows, err := conn.Query(plan.Query, plan.Args...)
 		if err != nil {
@@ -235,8 +235,8 @@ func TestMemExtra(t *testing.T) {
 	t.Run("Scan with short dest", func(t *testing.T) {
 		conn := New()
 		// seed
-		q := db.Query{
-			Action:  db.ActionCreate,
+		q := storage.Query{
+			Action:  storage.ActionCreate,
 			Table:   "dummy",
 			Columns: []string{"id", "name"},
 			Values:  []any{"d1", "dummy_name"},
@@ -244,7 +244,7 @@ func TestMemExtra(t *testing.T) {
 		plan, _ := conn.Compile(q, &DummyModel{})
 		conn.Exec(plan.Query, plan.Args...)
 
-		qr := db.Query{Action: db.ActionReadOne, Table: "dummy"}
+		qr := storage.Query{Action: storage.ActionReadOne, Table: "dummy"}
 		planr, _ := conn.Compile(qr, &DummyModel{})
 		scanner := conn.QueryRow(planr.Query, planr.Args...)
 
@@ -260,8 +260,8 @@ func TestMemExtra(t *testing.T) {
 	t.Run("Scan with unsupported type", func(t *testing.T) {
 		conn := New()
 		// seed
-		q := db.Query{
-			Action:  db.ActionCreate,
+		q := storage.Query{
+			Action:  storage.ActionCreate,
 			Table:   "dummy",
 			Columns: []string{"id", "name"},
 			Values:  []any{"d1", "dummy_name"},
@@ -269,7 +269,7 @@ func TestMemExtra(t *testing.T) {
 		plan, _ := conn.Compile(q, &DummyModel{})
 		conn.Exec(plan.Query, plan.Args...)
 
-		qr := db.Query{Action: db.ActionReadOne, Table: "dummy"}
+		qr := storage.Query{Action: storage.ActionReadOne, Table: "dummy"}
 		planr, _ := conn.Compile(qr, &DummyModel{})
 		scanner := conn.QueryRow(planr.Query, planr.Args...)
 

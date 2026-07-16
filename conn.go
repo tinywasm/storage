@@ -1,4 +1,4 @@
-package db
+package storage
 
 // Conn is what a storage backend implements: the union of Executor and Compiler. Every real
 // backend (postgres, sqlt, indexdb) is a single concrete type satisfying both halves — Conn

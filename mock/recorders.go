@@ -1,8 +1,8 @@
 package mock
 
 import (
-	"github.com/tinywasm/db"
 	"github.com/tinywasm/model"
+	"github.com/tinywasm/storage"
 )
 
 // Executor captures execution calls.
@@ -10,8 +10,8 @@ type Executor struct {
 	ExecutedQueries []string
 	ExecutedArgs    [][]any
 	ReturnExecErr   error
-	ReturnQueryRow  db.Scanner
-	ReturnQueryRows db.Rows
+	ReturnQueryRow  storage.Scanner
+	ReturnQueryRows storage.Rows
 	ReturnQueryErr  error
 	ReturnCloseErr  error
 }
@@ -22,7 +22,7 @@ func (m *Executor) Exec(query string, args ...any) error {
 	return m.ReturnExecErr
 }
 
-func (m *Executor) QueryRow(query string, args ...any) db.Scanner {
+func (m *Executor) QueryRow(query string, args ...any) storage.Scanner {
 	m.ExecutedQueries = append(m.ExecutedQueries, query)
 	m.ExecutedArgs = append(m.ExecutedArgs, args)
 	if m.ReturnQueryRow == nil {
@@ -31,7 +31,7 @@ func (m *Executor) QueryRow(query string, args ...any) db.Scanner {
 	return m.ReturnQueryRow
 }
 
-func (m *Executor) Query(query string, args ...any) (db.Rows, error) {
+func (m *Executor) Query(query string, args ...any) (storage.Rows, error) {
 	m.ExecutedQueries = append(m.ExecutedQueries, query)
 	m.ExecutedArgs = append(m.ExecutedArgs, args)
 	if m.ReturnQueryRows == nil {
@@ -46,13 +46,13 @@ func (m *Executor) Close() error {
 
 // Compiler captures the query and returns a predefined plan.
 type Compiler struct {
-	LastQuery  db.Query
+	LastQuery  storage.Query
 	LastModel  model.Model
-	ReturnPlan db.Plan
+	ReturnPlan storage.Plan
 	ReturnErr  error
 }
 
-func (m *Compiler) Compile(q db.Query, model model.Model) (db.Plan, error) {
+func (m *Compiler) Compile(q storage.Query, model model.Model) (storage.Plan, error) {
 	m.LastQuery = q
 	m.LastModel = model
 	if m.ReturnPlan.Query == "" {
@@ -136,7 +136,7 @@ type TxExecutor struct {
 	BeginTxErr error
 }
 
-func (m *TxExecutor) BeginTx() (db.TxBoundExecutor, error) {
+func (m *TxExecutor) BeginTx() (storage.TxBoundExecutor, error) {
 	if m.BeginTxErr != nil {
 		return nil, m.BeginTxErr
 	}
@@ -165,11 +165,11 @@ func (m *TxBoundExecutor) Rollback() error {
 }
 
 var (
-	_ db.Executor        = (*Executor)(nil)
-	_ db.Compiler        = (*Compiler)(nil)
-	_ db.Scanner         = (*Scanner)(nil)
-	_ db.Rows            = (*Rows)(nil)
-	_ model.Model        = (*Model)(nil)
-	_ db.TxExecutor      = (*TxExecutor)(nil)
-	_ db.TxBoundExecutor = (*TxBoundExecutor)(nil)
+	_ storage.Executor        = (*Executor)(nil)
+	_ storage.Compiler        = (*Compiler)(nil)
+	_ storage.Scanner         = (*Scanner)(nil)
+	_ storage.Rows            = (*Rows)(nil)
+	_ model.Model             = (*Model)(nil)
+	_ storage.TxExecutor      = (*TxExecutor)(nil)
+	_ storage.TxBoundExecutor = (*TxBoundExecutor)(nil)
 )
