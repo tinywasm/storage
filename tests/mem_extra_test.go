@@ -482,6 +482,153 @@ func TestMemExtra(t *testing.T) {
 		}
 	})
 
+	t.Run("IsNotNull condition", func(t *testing.T) {
+		conn := mem.New()
+		seed := []ExtraDummy{
+			{Id: "1", Name: "a"},
+			{Id: "2", Name: ""},
+		}
+		for _, item := range seed {
+			q := storage.Query{
+				Action:  storage.ActionCreate,
+				Table:   item.ModelName(),
+				Columns: []string{"id", "name", "qty", "active"},
+				Values:  []any{item.Id, item.Name, item.Qty, item.Active},
+			}
+			plan, _ := conn.Compile(q, &item)
+			conn.Exec(plan.Query, plan.Args...)
+		}
+
+		q := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.IsNotNull("id")},
+		}
+		plan, _ := conn.Compile(q, &ExtraDummy{})
+		rows, err := conn.Query(plan.Query, plan.Args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for rows.Next() {
+			var d ExtraDummy
+			rows.Scan(d.Pointers()...)
+			got = append(got, d.Id)
+		}
+		rows.Close()
+		if len(got) != 2 {
+			t.Errorf("expected both rows (id is always set), got %+v", got)
+		}
+	})
+
+	t.Run("inSlice nil listVal and non-numeric field against int lists", func(t *testing.T) {
+		conn := mem.New()
+		item := ExtraDummy{Id: "1", Name: "a", Qty: 10}
+		q := storage.Query{
+			Action:  storage.ActionCreate,
+			Table:   item.ModelName(),
+			Columns: []string{"id", "name", "qty", "active"},
+			Values:  []any{item.Id, item.Name, item.Qty, item.Active},
+		}
+		plan, _ := conn.Compile(q, &item)
+		conn.Exec(plan.Query, plan.Args...)
+
+		cases := []struct {
+			name string
+			cond storage.Condition
+		}{
+			{"nil listVal", storage.In("id", nil)},
+			{"[]int against non-numeric field", storage.In("name", []int{1, 2})},
+			{"[]int64 against non-numeric field", storage.In("name", []int64{1, 2})},
+		}
+		for _, tc := range cases {
+			q := storage.Query{
+				Action:     storage.ActionReadAll,
+				Table:      "extra_dummy",
+				Conditions: []storage.Condition{tc.cond},
+			}
+			plan, _ := conn.Compile(q, &ExtraDummy{})
+			rows, _ := conn.Query(plan.Query, plan.Args...)
+			var got int
+			for rows.Next() {
+				var d ExtraDummy
+				rows.Scan(d.Pointers()...)
+				got++
+			}
+			rows.Close()
+			if got != 0 {
+				t.Errorf("%s: expected no matches, got %d", tc.name, got)
+			}
+		}
+	})
+
+	t.Run("compareAny orders strings ascending", func(t *testing.T) {
+		conn := mem.New()
+		seed := []ExtraDummy{
+			{Id: "1", Name: "alpha"},
+			{Id: "2", Name: "beta"},
+		}
+		for _, item := range seed {
+			q := storage.Query{
+				Action:  storage.ActionCreate,
+				Table:   item.ModelName(),
+				Columns: []string{"id", "name", "qty", "active"},
+				Values:  []any{item.Id, item.Name, item.Qty, item.Active},
+			}
+			plan, _ := conn.Compile(q, &item)
+			conn.Exec(plan.Query, plan.Args...)
+		}
+
+		q := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Lt("name", "beta")},
+		}
+		plan, _ := conn.Compile(q, &ExtraDummy{})
+		rows, _ := conn.Query(plan.Query, plan.Args...)
+		var got []string
+		for rows.Next() {
+			var d ExtraDummy
+			rows.Scan(d.Pointers()...)
+			got = append(got, d.Id)
+		}
+		rows.Close()
+		if len(got) != 1 || got[0] != "1" {
+			t.Errorf("expected only Id 1 ('alpha' < 'beta'), got %+v", got)
+		}
+	})
+
+	t.Run("likeMatch pattern of only wildcards", func(t *testing.T) {
+		conn := mem.New()
+		item := ExtraDummy{Id: "1", Name: "anything"}
+		q := storage.Query{
+			Action:  storage.ActionCreate,
+			Table:   item.ModelName(),
+			Columns: []string{"id", "name", "qty", "active"},
+			Values:  []any{item.Id, item.Name, item.Qty, item.Active},
+		}
+		plan, _ := conn.Compile(q, &item)
+		conn.Exec(plan.Query, plan.Args...)
+
+		q2 := storage.Query{
+			Action:     storage.ActionReadAll,
+			Table:      "extra_dummy",
+			Conditions: []storage.Condition{storage.Like("name", "%%")},
+		}
+		plan2, _ := conn.Compile(q2, &ExtraDummy{})
+		rows, _ := conn.Query(plan2.Query, plan2.Args...)
+		var got int
+		for rows.Next() {
+			var d ExtraDummy
+			rows.Scan(d.Pointers()...)
+			got++
+		}
+		rows.Close()
+		if got != 1 {
+			t.Errorf("expected '%%%%' to match everything, got %d rows", got)
+		}
+	})
+
 	t.Run("Scanner error return", func(t *testing.T) {
 		conn := mem.New()
 		qr := storage.Query{

@@ -199,6 +199,8 @@ func evalCond(row dbRow, c storage.Condition) bool {
 	case "<=":
 		return compareAny(v, c.Value()) <= 0
 	}
+	// Unreachable: storage.Condition is sealed (operator is only ever set by the constructors
+	// above, all of which are handled), but Go can't prove a string switch exhaustive.
 	return false
 }
 
@@ -458,9 +460,6 @@ func hasSuffixHelper(s, suffix string) bool {
 }
 
 func findHelper(s, sub string) int {
-	if len(sub) == 0 {
-		return 0
-	}
 	for i := 0; i <= len(s)-len(sub); i++ {
 		if s[i:i+len(sub)] == sub {
 			return i
